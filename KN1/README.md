@@ -203,28 +203,19 @@ Der verwundbare Parameter wurde in der `snippets.gtl`-Seite gefunden. Der `uid`-
 https://google-gruyere.appspot.com/534777207786010371245803087048020808046/snippets.gtl?uid=<img src=x onerror=alert('Reflected XSS')>
 ```
 
-### Schritt 2 – Alert ausgelöst
+### Schritt 2 – Payload in der URL und Network-Tab
 
-**Screenshot – Alert-Dialog mit Payload in der URL:**
+**Screenshot – Reflected XSS URL mit Payload in der Adressleiste und DevTools Network:**
 
-![Reflected XSS Alert](alert.png)
+![Reflected XSS URL und Network](alert.png)
 
-Die URL-Leiste zeigt den codierten Payload: `...snippets.gtl?uid=<img%20src=x%20onerror=alert(%27Reflected%20XSS%27)>`. Der Browser hat den `onerror`-Handler ausgeführt und der Alert-Dialog «Reflected XSS» wird angezeigt. Der Benutzer **angreifer-yanni** ist eingeloggt. Im DevTools-Network-Panel sind die Anfragen sichtbar, darunter `snippets.gtl?uid=%3Cimg%20s...`.
+Die URL-Leiste zeigt den codierten Payload: `...7048020808046/snippets.gtl?uid=<img%20src=x%20onerror=alert(%27Reflected%20XSS%27)>`. Der Benutzer **angreifer-yanni** ist eingeloggt. Die Seite zeigt `[broken image] is not an author.` – der uid-Wert (der Payload) ist kein gültiger Benutzername, wird aber trotzdem ungefiltert gerendert. Im DevTools-Network-Panel (rechts) sind die ausgelösten Anfragen sichtbar, darunter `snippets.gtl?uid=%3Cimg%20s...` sowie der fehlgeschlagene Bildaufruf `x` (Zeile 139) – das ist der `onerror`-Auslöser.
 
 ### Schritt 3 – Payload im HTML-Quelltext (Response)
 
-**Screenshot – DevTools Network → Response mit Payload:**
+**Hinweis zum Network-Response:**
 
-![DevTools Response mit Payload](admin.png)
-
-Im DevTools Network-Tab (Response-Tab der `snippets.gtl`-Anfrage) ist der Payload im HTML-Quelltext sichtbar:
-
-- **Zeile 154:** `<img src=x onerror=alert('Reflected XSS'` ← Payload direkt im HTML
-- **Zeile 166:** `<img src=x onerror=alert('Reflected XS...` ← nochmals im Content-Bereich
-- **Zeile 141:** `angreifer-yanni &lt;angreifer-yann...` ← Benutzername ist korrekt escaped
-- Die Seite zeigt `[broken image] is not an author.` – der uid-Wert (der Payload) ist kein gültiger Benutzername
-
-Der Payload erscheint direkt im HTML ohne Escaping – klassisches Reflected XSS.
+Der Payload erscheint im HTML-Quelltext der Server-Antwort ungefiltert – sichtbar im DevTools Network-Tab → Response-Tab. In der `snippets.gtl`-Antwort wird der `uid`-Parameter direkt ins HTML eingebettet ohne Output Encoding. Erkennbar auch an der Anfrage-Liste: `snippets.gtl?uid=%3Cimg%20s...` sowie der fehlgeschlagene Bildaufruf für `x` (der onerror-Auslöser). Ein separater Response-Screenshot liegt nicht vor – das Network-Tab ist im `alert.png`-Screenshot rechts sichtbar.
 
 ### Schritt 4 – Unterschied zu Stored XSS
 
@@ -255,15 +246,15 @@ Um Admin-Rechte zu erlangen, muss `author` durch `admin` ersetzt werden:
 67394644|angreifer-yanni||admin
 ```
 
-**Screenshot – DevTools Cookie vor/nach Manipulation + Admin-Bereich:**
+**Screenshot – Gruyere nach erfolgreicher Cookie-Manipulation mit Admin-Rechten:**
 
-![Admin nach Cookie-Manipulation](gruyere_als_verteidiger.png)
+![Admin-Rechte nach Cookie-Manipulation](admin.png)
 
-> Hinweis: Der Screenshot zeigt das Verteidiger-Cookie in den DevTools. Die Admin-Manipulation erfolgte analog durch direktes Bearbeiten des GRUYERE-Cookie-Werts in DevTools → Application → Cookies.
+Das Bild zeigt Gruyere: Home mit dem Benutzer **«normal \<normal\>»** im Header – und dem entscheidenden Link **«Manage this server»**, der nur für Admin-Benutzer sichtbar ist. In den DevTools (Application → Cookies) sind zwei GRUYERE-Cookies sichtbar:
+- `GRUYERE`: Wert beginnt mit `18391299|no...` (Grösse 35) → der manipulierte Cookie mit Admin-Rolle
+- `GRUYERE_ID`: Wert `534777207778...` (Grösse 49)
 
-**Screenshot – Gruyere nach erfolgreicher Manipulation mit Admin-Rechten:**
-
-Durch den Eintrag `angreifer-yanni <angreifer-yanni>` im Header (mit `Manage this server`-Link, sichtbar in Bild 1 `onerror.png`) ist erkennbar, dass Admin-Rechte erlangt wurden – der `Manage this server`-Link erscheint nur für Admin-Benutzer.
+Der ursprüngliche Cookie-Wert `18391299|normal||author` wurde zu `18391299|normal||admin` geändert. Nach dem Neuladen zeigt Gruyere den «Manage this server»-Link – die Manipulation war erfolgreich.
 
 ---
 
@@ -403,8 +394,8 @@ In der OWASP Top 10 2025 voraussichtlich weiterhin **A01 – Broken Access Contr
 | `gruyere_3.png` | B2 – Cookie-Anzeige im roten Kasten, beide Fenster + DevTools mit Cookie-Werten |
 | `gruyere_als_verteidiger.png` | DevTools Application → Cookies des Verteidigers (GRUYERE=115461269\|verteidiger-yann\|\|author) |
 | `onerror.png` | B1 – Verteidiger-Fenster mit rotem Menü + DevTools Cookies (Beweis für cross-user Ausführung) |
-| `alert.png` | C – Reflected XSS Alert-Dialog, Payload in URL-Leiste sichtbar |
-| `admin.png` | C – DevTools Network Response mit Payload im HTML-Quelltext (Zeilen 154, 166) |
+| `alert.png` | C – Reflected XSS: Payload in URL-Leiste + DevTools Network (fehlgeschlagener Bildaufruf `x` als onerror-Auslöser) |
+| `admin.png` | D – Client-State Manipulation: «Manage this server»-Link nach Cookie-Manipulation + DevTools Cookies sichtbar |
 | `terminal1.png` | B3 – Python HTTP-Server mit eingehenden Cookie-Anfragen (gestohlene Cookies sichtbar) |
 | `terminal2.png` | B3 – Serveo SSH-Tunnel mit zugewiesener HTTPS-URL (`https://e581525f...serveousercontent.com`) |
 
